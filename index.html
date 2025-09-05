@@ -186,6 +186,13 @@ function gameLoop(){
   }
 }
 
+  document.addEventListener('touchstart', (e) => {
+    // Se o jogo estiver pausado, qualquer toque despausa
+    if(paused){
+        pausar();
+    }
+});
+
 spawnPiece();
 gameInterval = setInterval(gameLoop, 500);
 </script>
