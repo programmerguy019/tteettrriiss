@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tetris Divertido Extremo</title>
+<style>
+  body { margin:0; background:#111; color:#fff; font-family:Arial,sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; flex-direction:column; }
+  #game { display:grid; grid-template-rows: repeat(20, 30px); grid-template-columns: repeat(10, 30px); background:#222; border:3px solid #fff; position:relative; transition: transform 0.1s; }
+  .cell { width:30px; height:30px; border:1px solid #333; transition: background 0.2s; }
+  #overlay { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; font-size:48px; display:none; flex-direction:column; z-index:10; }
+  #buttons { position: fixed; bottom: 10px; display: flex; justify-content: center; width: 100%; flex-wrap: wrap; }
+  button { font-size: 18px; padding: 10px 15px; margin: 3px; cursor: pointer; }
+</style>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="overlay">
+    <div id="overlay-text">PAUSADO</div>
+    <img id="gameover-img" src="" style="display:none;width:200px;margin-top:20px;">
+  </div>
+
+  <div id="buttons">
+    <button onclick="moverEsq()">⬅️ Esquerda</button>
+    <button onclick="moverDir()">➡️ Direita</button>
+    <button onclick="girar()">🔄 Girar</button>
+    <button onclick="cairRapido()">⬇️ Cair Rápido</button>
+    <button onclick="pausar()">⏸️ Pausar</button>
+    <button onclick="reiniciar()">🔁 Reiniciar</button>
+  </div>
+
+<script>
+const rows = 20, cols = 10;
+let grid = [], currentPiece;
+let gameInterval, paused=false;
+const overlay = document.getElementById('overlay');
+const overlayText = document.getElementById('overlay-text');
+const gameoverImg = document.getElementById('gameover-img');
+const gameDiv = document.getElementById('game');
+
+// Sons
+const somEsq = new Audio('https://www.soundjay.com/buttons/sounds/button-09.mp3');
+const somDir = new Audio('https://www.soundjay.com/buttons/sounds/button-10.mp3');
+const somGirar = new Audio('https://www.soundjay.com/buttons/sounds/button-3.mp3');
+const somCair = new Audio('https://www.soundjay.com/buttons/sounds/button-4.mp3');
+const somPausar = new Audio('https://www.soundjay.com/buttons/sounds/button-7.mp3');
+const somLinha = new Audio('https://www.soundjay.com/buttons/sounds/button-5.mp3');
+const somErro = new Audio('https://www.soundjay.com/buttons/sounds/button-2.mp3');
+const somGameOver = new Audio('https://www.soundjay.com/buttons/sounds/button-16.mp3');
+// Risada do perdedor
+const somRisada = new Audio('risada.mp3');
+
+// Música de fundo
+const musicaFundo = new Audio('fantasy.mp3');
+musicaFundo.loop = true;
+
+// Função para tocar música após o primeiro toque/clique
+function startMusicOnce() {
+    musicaFundo.play();
+}
+document.addEventListener('touchstart', startMusicOnce, {once:true});
+document.addEventListener('click', startMusicOnce, {once:true});
+
+// Criar grid
+for(let r=0;r<rows;r++){
+  grid[r] = [];
+  for(let c=0;c<cols;c++){
+    let cell = document.createElement('div');
+    cell.classList.add('cell');
+    gameDiv.appendChild(cell);
+    grid[r][c] = 0;
+  }
+}
+
+// Peças com cores
+const pieces = [
+  {shape:[[1,1],[1,1]], color:'yellow'},
+  {shape:[[0,1,0],[1,1,1]], color:'purple'},
+  {shape:[[1,1,0],[0,1,1]], color:'green'},
+  {shape:[[0,1,1],[1,1,0]], color:'red'},
+  {shape:[[1,0,0],[1,1,1]], color:'orange'},
+  {shape:[[0,0,1],[1,1,1]], color:'blue'},
+  {shape:[[1,1,1,1]], color:'cyan'}
+];
+
+function spawnPiece(){
+  const p = pieces[Math.floor(Math.random()*pieces.length)];
+  currentPiece = {shape:p.shape, color:p.color, x: Math.floor(cols/2)-1, y:0};
+}
+
+function draw(){
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const cell = gameDiv.children[r*cols+c];
+      cell.style.background = grid[r][c] || '#222';
+    }
+  }
+  if(currentPiece){
+    currentPiece.shape.forEach((row,i)=>{
+      row.forEach((val,j)=>{
+        if(val){
+          const x = currentPiece.x + j;
+          const y = currentPiece.y + i;
+          if(y>=0 && y<rows && x>=0 && x<cols) gameDiv.children[y*cols+x].style.background=currentPiece.color;
+        }
+      });
+    });
+  }
+}
+
+function collide(xOffset, yOffset){
+  for(let i=0;i<currentPiece.shape.length;i++){
+    for(let j=0;j<currentPiece.shape[i].length;j++){
+      if(currentPiece.shape[i][j]){
+        const x = currentPiece.x+j+xOffset;
+        const y = currentPiece.y+i+yOffset;
+        if(x<0 || x>=cols || y>=rows || grid[y][x]) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function merge(){
+  currentPiece.shape.forEach((row,i)=>{
+    row.forEach((val,j)=>{
+      if(val){
+        const x = currentPiece.x+j;
+        const y = currentPiece.y+i;
+        if(y>=0 && y<rows && x>=0 && x<cols) grid[y][x]=currentPiece.color;
+      }
+    });
+  });
+}
+
+function shakeBoard(){
+  gameDiv.style.transform='translateX(-10px)';
+  setTimeout(()=>gameDiv.style.transform='translateX(10px)',50);
+  setTimeout(()=>gameDiv.style.transform='translateX(0)',100);
+}
+
+function clearLines(){
+  let linesCleared=0;
+  for(let r=rows-1;r>=0;r--){
+    if(grid[r].every(cell=>cell)){
+      grid.splice(r,1);
+      grid.unshift(Array(cols).fill(0));
+      linesCleared++;
+      somLinha.play();
+      for(let i=0;i<rows;i++){
+        for(let j=0;j<cols;j++){
+          if(grid[i][j]) gameDiv.children[i*cols+j].style.background = Math.random()>0.5?'white':grid[i][j];
+        }
+      }
+      r++;
+    }
+  }
+  if(linesCleared>0) shakeBoard();
+}
+
+function moverEsq(){ if(!paused){ if(!collide(-1,0)){currentPiece.x--; somEsq.play(); } else { somErro.play(); shakeBoard(); } draw(); } }
+function moverDir(){ if(!paused){ if(!collide(1,0)){currentPiece.x++; somDir.play(); } else { somErro.play(); shakeBoard(); } draw(); } }
+function girar(){
+  if(paused) return;
+  let newShape = currentPiece.shape[0].map((_,i)=>currentPiece.shape.map(row=>row[i])).reverse();
+  let oldShape = currentPiece.shape;
+  currentPiece.shape=newShape;
+  if(collide(0,0)){ currentPiece.shape=oldShape; somErro.play(); shakeBoard(); }
+  somGirar.play(); draw();
+}
+function cairRapido(){
+  if(paused) return;
+  currentPiece.y++;
+  if(collide(0,0)){ currentPiece.y--; merge(); clearLines(); spawnPiece(); if(collide(0,0)) gameOver(); }
+  somCair.play(); draw();
+}
+function pausar(){ paused=!paused; overlay.style.display = paused? 'flex':'none'; overlayText.textContent='PAUSADO'; somPausar.play(); }
+
+function gameOver(){
+  clearInterval(gameInterval);
+  overlay.style.display='flex';
+  overlayText.textContent='GAME OVER';
+  gameoverImg.src = 'continuaperdedor.img';
+  gameoverImg.style.display = 'block';
+  somGameOver.play();
+  somRisada.play();
+  shakeBoard();
+}
+
+function reiniciar(){
+  grid = Array.from({length:rows},()=>Array(cols).fill(0));
+  currentPiece = null;
+  overlay.style.display='none';
+  gameoverImg.style.display='none';
+  paused=false;
+  spawnPiece();
+  clearInterval(gameInterval);
+  gameInterval = setInterval(gameLoop,500);
+  draw();
+}
+
+function gameLoop(){
+  if(!paused){
+    if(!collide(0,1)) currentPiece.y++;
+    else { merge(); clearLines(); spawnPiece(); if(collide(0,0)) gameOver(); }
+    draw();
+  }
+}
+
+spawnPiece();
+gameInterval = setInterval(gameLoop, 500);
+
+// Evento para toque no celular para despausar
+document.addEventListener('touchstart', (e) => {
+    if(paused){
+        pausar();
+    }
+});
+</script>
+</body>
+</html>
+
